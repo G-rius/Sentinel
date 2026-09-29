@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Sentinel",
+    "slug": "sentinel",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.sentinel.stageone"
+    }
+  }
+}
