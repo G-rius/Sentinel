@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EventType {
+  TEST_EVENT
+  DEVICE_REGISTERED
+  LOCATION_UPDATE
+  SIM_REPLACEMENT
+  DEVICE_CHANGED
+  NEW_RECIPIENT
+  LARGE_TRANSACTION
+  TRANSACTION_ATTEMPT
+  SECURITY_CHANGE
+}
+
+enum TrustAction {
+  ALLOW
+  STEP_UP
+  BLOCK
+}
+
+enum TransactionStatus {
+  ALLOWED
+  STEP_UP
+  BLOCKED
+}
+
+model User {
+  id          String        @id
+  name        String
+  phoneNumber String        @unique
+  trustScore  Int           @default(90)
+  createdAt   DateTime      @default(now())
+  devices     Device[]
+  events      Event[]
+  transactions Transaction[]
+}
+
+model Device {
+  id             String   @id @default(uuid())
+  userId         String
+  installationId String
+  manufacturer   String
+  model          String
+  os             String
+  osVersion      String
+  trusted        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events         Event[]
+
+  @@unique([userId, installationId])
+  @@index([userId])
+}
+
+model Event {
+  id             String    @id @default(uuid())
+  userId         String
+  deviceId       String
+  type           EventType
+  timestamp      DateTime
+  metadata       Json      @default("{}")
+  riskDelta      Int
+  resultingTrust Int
+  action         TrustAction
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device         Device    @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@index([userId, timestamp])
+}
+
+model Transaction {
+  id        String            @id @default(uuid())
+  userId    String
+  amount    Decimal           @db.Decimal(12, 2)
+  recipient String
+  status    TransactionStatus
+  createdAt DateTime          @default(now())
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

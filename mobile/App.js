@@ -31,10 +31,42 @@ export default function App() {
   const [connection, setConnection] = useState(apiUrl ? 'Not tested' : 'API URL missing');
   const [lastEvent, setLastEvent] = useState(null);
   const [isSending, setIsSending] = useState(false);
+  const [trustScore, setTrustScore] = useState(null);
+  const [decision, setDecision] = useState('—');
+  const [historyEvent, setHistoryEvent] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     getInstallationId().then(setInstallationId).catch(() => setConnection('Unable to create installation ID'));
+    refreshTrust();
   }, []);
+
+  async function refreshTrust() {
+    if (!apiUrl) {
+      setConnection('API URL missing');
+      return;
+    }
+    setIsRefreshing(true);
+    try {
+      const [trustResponse, eventsResponse] = await Promise.all([
+        fetch(`${apiUrl.replace(/\/$/, '')}/users/demo-user/trust`),
+        fetch(`${apiUrl.replace(/\/$/, '')}/users/demo-user/events?limit=1`),
+      ]);
+      const trustPayload = await trustResponse.json();
+      const eventsPayload = await eventsResponse.json();
+      if (!trustResponse.ok) throw new Error(trustPayload.error || 'Could not refresh trust');
+      if (!eventsResponse.ok) throw new Error(eventsPayload.error || 'Could not refresh recent events');
+      setTrustScore(trustPayload.trustScore);
+      setDecision(trustPayload.action);
+      setHistoryEvent(eventsPayload[0] || null);
+      setConnection('Connected');
+    } catch (error) {
+      setConnection('Offline');
+      setLastEvent({ error: `${error.message}. Check the backend URL and network.` });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
   async function sendTestEvent() {
     setIsSending(true);
@@ -68,6 +100,9 @@ export default function App() {
       if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
 
       setConnection('Connected');
+      setTrustScore(payload.trustScore);
+      setDecision(payload.action);
+      setHistoryEvent(payload.latestEvent);
       setLastEvent({ success: true, ...payload });
     } catch (error) {
       setConnection('Offline');
@@ -80,11 +115,18 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.kicker}>STAGE 1 / FOUNDATION</Text>
+        <Text style={styles.kicker}>STAGE 2 / TRUST</Text>
         <Text style={styles.title}>Sentinel</Text>
         <View style={styles.rule} />
         <Text style={styles.label}>BACKEND</Text>
         <Text style={[styles.connection, connection === 'Connected' && styles.connected]}>{connection}</Text>
+        <View style={styles.trustRow}>
+          <View><Text style={styles.label}>CURRENT TRUST</Text><Text style={styles.trustValue}>{trustScore === null ? '—' : trustScore}<Text style={styles.trustOutOf}> / 100</Text></Text></View>
+          <View><Text style={styles.label}>LAST DECISION</Text><Text style={[styles.decisionValue, decision === 'BLOCK' && styles.error, decision === 'STEP_UP' && styles.warning]}>{decision}</Text></View>
+          <Pressable style={({ pressed }) => [styles.refreshButton, pressed && styles.buttonPressed, isRefreshing && styles.buttonDisabled]} onPress={refreshTrust} disabled={isRefreshing} accessibilityLabel="Refresh trust score">
+            {isRefreshing ? <ActivityIndicator color="#f7f5ed" /> : <Text style={styles.refreshText}>Refresh Trust</Text>}
+          </Pressable>
+        </View>
         <View style={styles.deviceCard}>
           <Text style={styles.label}>DEVICE</Text>
           <Text style={styles.deviceName}>{device.model}</Text>
@@ -94,7 +136,7 @@ export default function App() {
         <Pressable style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, isSending && styles.buttonDisabled]} onPress={sendTestEvent} disabled={isSending}>
           {isSending ? <ActivityIndicator color="#f7f5ed" /> : <Text style={styles.buttonText}>Send Test Event</Text>}
         </Pressable>
-        {lastEvent && <View style={styles.result}><Text style={styles.label}>LAST EVENT</Text>{lastEvent.error ? <Text style={styles.error}>{lastEvent.error}</Text> : <><Text style={styles.eventType}>TEST_EVENT</Text><Text style={styles.success}>Received successfully</Text><Text style={styles.detail}>Event ID: {lastEvent.eventId}</Text><Text style={styles.detail}>Received: {lastEvent.receivedAt}</Text></>}</View>}
+        {(lastEvent || historyEvent) && <View style={styles.result}><Text style={styles.label}>LAST EVENT</Text>{lastEvent?.error ? <Text style={styles.error}>{lastEvent.error}</Text> : lastEvent?.success ? <><Text style={styles.eventType}>TEST_EVENT</Text><Text style={styles.success}>Received successfully</Text><Text style={styles.detail}>Decision: {lastEvent.action} · Trust: {lastEvent.trustScore}</Text><Text style={styles.detail}>Event ID: {lastEvent.eventId}</Text><Text style={styles.detail}>Received: {lastEvent.receivedAt}</Text></> : <><Text style={styles.eventType}>{historyEvent.type}</Text><Text style={styles.detail}>Decision: {historyEvent.action} · Trust: {historyEvent.resultingTrust}</Text><Text style={styles.detail}>Recorded: {historyEvent.timestamp}</Text></>}</View>}
         <Text style={styles.installation}>Installation: {installationId || 'Creating...'}</Text>
       </ScrollView>
     </SafeAreaView>
@@ -110,6 +152,13 @@ const styles = StyleSheet.create({
   label: { color: '#567369', fontSize: 11, letterSpacing: 1.3, fontWeight: '700' },
   connection: { color: '#b1741e', fontSize: 22, fontWeight: '700', marginTop: 8 },
   connected: { color: '#25845b' },
+  trustRow: { alignItems: 'center', backgroundColor: '#f7f5ed', flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 24, padding: 16 },
+  trustValue: { color: '#17211f', fontSize: 28, fontWeight: '800', marginTop: 7 },
+  trustOutOf: { color: '#82968d', fontSize: 12, fontWeight: '500' },
+  decisionValue: { color: '#25845b', fontSize: 15, fontWeight: '800', marginTop: 12 },
+  warning: { color: '#b1741e' },
+  refreshButton: { alignItems: 'center', backgroundColor: '#355149', justifyContent: 'center', minHeight: 42, paddingHorizontal: 12 },
+  refreshText: { color: '#f7f5ed', fontSize: 12, fontWeight: '700' },
   deviceCard: { backgroundColor: '#f7f5ed', borderTopWidth: 3, borderTopColor: '#17211f', marginTop: 34, padding: 22 },
   deviceName: { color: '#17211f', fontSize: 26, fontWeight: '800', marginTop: 16 },
   detail: { color: '#567369', fontSize: 13, marginTop: 7 },
