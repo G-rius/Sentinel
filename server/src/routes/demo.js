@@ -1,22 +1,20 @@
 const express = require('express');
-const { EVENT_TYPE_SET } = require('../constants/eventTypes');
 
 function isDemoModeEnabled() {
   return !['false', '0', 'off', 'no'].includes(String(process.env.DEMO_MODE || 'true').toLowerCase());
 }
 
-function createSimulationRouter(eventService) {
+function createDemoRouter(eventService) {
   const router = express.Router();
 
-  router.post('/', async (req, res, next) => {
+  router.post('/reset', async (req, res, next) => {
     if (!isDemoModeEnabled()) {
       return res.status(403).json({ success: false, error: { code: 'DEMO_DISABLED', message: 'Demo mode is disabled.' } });
     }
-    if (!EVENT_TYPE_SET.has(req.body?.type)) {
-      return res.status(400).json({ success: false, error: 'A valid event type is required' });
-    }
     try {
-      return res.status(201).json(await eventService.simulateEvent(req.body));
+      const userId = req.body?.userId || 'demo-user';
+      const reset = await eventService.resetDemoState(userId);
+      return res.json({ success: true, ...reset });
     } catch (error) {
       return next(error);
     }
@@ -25,4 +23,4 @@ function createSimulationRouter(eventService) {
   return router;
 }
 
-module.exports = { createSimulationRouter };
+module.exports = { createDemoRouter };

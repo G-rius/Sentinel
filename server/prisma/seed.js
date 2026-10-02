@@ -4,9 +4,16 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function seedDemoUser(database = prisma) {
+  await database.transaction.deleteMany({ where: { userId: 'demo-user' } });
+  await database.event.deleteMany({ where: { userId: 'demo-user' } });
+
   const user = await database.user.upsert({
     where: { id: 'demo-user' },
-    update: { name: 'Sentinel Demo', phoneNumber: '+254700000000' },
+    update: {
+      name: 'Sentinel Demo',
+      phoneNumber: '+254700000000',
+      trustScore: 90,
+    },
     create: {
       id: 'demo-user',
       name: 'Sentinel Demo',
@@ -23,6 +30,8 @@ async function seedDemoUser(database = prisma) {
       os: 'Android',
       osVersion: '14',
       trusted: true,
+      trustedLatitude: -1.286389,
+      trustedLongitude: 36.817223,
     },
     create: {
       userId: user.id,
@@ -32,6 +41,8 @@ async function seedDemoUser(database = prisma) {
       os: 'Android',
       osVersion: '14',
       trusted: true,
+      trustedLatitude: -1.286389,
+      trustedLongitude: 36.817223,
     },
   });
 

@@ -13,7 +13,8 @@ function createEventsRouter(eventService) {
       return res.status(400).json({ success: false, error: 'Unknown event type' });
     }
     try {
-      return res.status(201).json(await eventService.processEvent(req.body));
+      const result = await eventService.processEvent(req.body);
+      return res.status(result.duplicate ? 200 : 201).json(result);
     } catch (error) {
       return next(error);
     }

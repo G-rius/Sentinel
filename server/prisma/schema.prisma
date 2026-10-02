@@ -11,6 +11,8 @@ enum EventType {
   TEST_EVENT
   DEVICE_REGISTERED
   LOCATION_UPDATE
+  LOCATION_VERIFIED
+  LOCATION_ANOMALY
   SIM_REPLACEMENT
   DEVICE_CHANGED
   NEW_RECIPIENT
@@ -46,14 +48,16 @@ model Device {
   id             String   @id @default(uuid())
   userId         String
   installationId String
-  manufacturer   String
-  model          String
-  os             String
-  osVersion      String
-  trusted        Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  events         Event[]
+  manufacturer     String
+  model            String
+  os               String
+  osVersion        String
+  trusted          Boolean  @default(false)
+  trustedLatitude  Float?
+  trustedLongitude Float?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events           Event[]
 
   @@unique([userId, installationId])
   @@index([userId])

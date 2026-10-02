@@ -5,6 +5,9 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+const apiUsername = process.env.EXPO_PUBLIC_API_USERNAME || 'sentinel';
+const apiPassword = process.env.EXPO_PUBLIC_API_PASSWORD || 'sentinel-dev';
+const apiAuth = `Basic ${btoa(`${apiUsername}:${apiPassword}`)}`;
 const installationKey = '@sentinel/installation-id';
 
 function readDevice() {
@@ -49,8 +52,8 @@ export default function App() {
     setIsRefreshing(true);
     try {
       const [trustResponse, eventsResponse] = await Promise.all([
-        fetch(`${apiUrl.replace(/\/$/, '')}/users/demo-user/trust`),
-        fetch(`${apiUrl.replace(/\/$/, '')}/users/demo-user/events?limit=1`),
+        fetch(`${apiUrl.replace(/\/$/, '')}/users/demo-user/trust`, { headers: { Authorization: apiAuth } }),
+        fetch(`${apiUrl.replace(/\/$/, '')}/users/demo-user/events?limit=1`, { headers: { Authorization: apiAuth } }),
       ]);
       const trustPayload = await trustResponse.json();
       const eventsPayload = await eventsResponse.json();
@@ -93,7 +96,7 @@ export default function App() {
       };
       const response = await fetch(`${apiUrl.replace(/\/$/, '')}/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: apiAuth },
         body: JSON.stringify(event),
       });
       const payload = await response.json();

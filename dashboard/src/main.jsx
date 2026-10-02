@@ -5,6 +5,16 @@ import { io } from 'socket.io-client';
 import './styles.css';
 
 const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+const demoMode = (import.meta.env.VITE_DEMO_MODE || 'true') === 'true';
+const dashboardAuth = `Basic ${btoa(`${import.meta.env.VITE_API_USERNAME || 'sentinel'}:${import.meta.env.VITE_API_PASSWORD || 'sentinel-dev'}`)}`;
+const riskRules = [
+  { label: 'SIM_REPLACEMENT', impact: -30 },
+  { label: 'DEVICE_CHANGED', impact: -25 },
+  { label: 'LOCATION_ANOMALY', impact: -15 },
+  { label: 'NEW_RECIPIENT', impact: -10 },
+  { label: 'LARGE_TRANSACTION', impact: -15 },
+  { label: 'SECURITY_CHANGE', impact: -20 },
+];
 const simulators = [
   ['SIM_REPLACEMENT', 'SIM replacement', 'SIM'],
   ['DEVICE_CHANGED', 'Device change', 'DEV'],
@@ -14,9 +24,15 @@ const simulators = [
 ];
 
 async function api(path, options) {
-  const response = await fetch(`${apiUrl}${path}`, options);
+  const response = await fetch(`${apiUrl}${path}`, {
+    ...options,
+    headers: {
+      Authorization: dashboardAuth,
+      ...(options?.headers || {}),
+    },
+  });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+  if (!response.ok) throw new Error(payload.error?.message || payload.error || `Request failed (${response.status})`);
   return payload;
 }
 
@@ -34,6 +50,7 @@ function App() {
   const [trust, setTrust] = useState(null);
   const [events, setEvents] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [securitySummary, setSecuritySummary] = useState(null);
   const [busy, setBusy] = useState('');
   const [amount, setAmount] = useState('24000');
   const [recipient, setRecipient] = useState('New recipient');
@@ -43,14 +60,16 @@ function App() {
     try {
       const health = await api('/health');
       setBackend(health.status === 'ok' ? 'Connected' : 'Offline');
-      const [trustData, eventData, transactionData] = await Promise.all([
+      const [trustData, eventData, transactionData, securityData] = await Promise.all([
         api('/users/demo-user/trust'),
         api('/users/demo-user/events?limit=30'),
         api('/transactions?userId=demo-user'),
+        api('/security/summary?userId=demo-user'),
       ]);
       setTrust(trustData);
       setEvents(eventData);
       setTransactions(transactionData);
+      setSecuritySummary(securityData.summary);
       setError('');
     } catch (requestError) {
       setBackend('Offline');
@@ -105,6 +124,23 @@ function App() {
     }
   }
 
+  async function resetDemo() {
+    setBusy('reset');
+    setError('');
+    try {
+      await api('/demo/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'demo-user' }),
+      });
+      await refreshDashboard();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
   const score = trust?.trustScore ?? 0;
   const latest = events[0];
   const trustHistory = events.slice().reverse().map((item) => ({
@@ -115,10 +151,11 @@ function App() {
   return (
     <main className="shell">
       <header className="masthead">
-        <div className="brand-lockup"><span className="brand-mark">S</span><div><p className="eyebrow">Trust operations / Stage 2</p><h1>Sentinel</h1></div></div>
+        <div className="brand-lockup"><span className="brand-mark">S</span><div><p className="eyebrow">Trust operations / Stage 5</p><h1>Sentinel</h1></div></div>
         <div className="connection-group">
           <span className={`connection status-${backend.toLowerCase()}`}><i /> Backend: {backend}</span>
           <span className={`connection status-${realtime.toLowerCase()}`}><i /> Updates: {realtime}</span>
+          {demoMode && <span className="connection status-allow"><i /> DEMO MODE</span>}
         </div>
       </header>
 
@@ -164,6 +201,41 @@ function App() {
               <button className="submit-button" disabled={Boolean(busy)}>{busy === 'transaction' ? 'Evaluating…' : 'Evaluate transfer'}</button>
             </form>
             <div className="transaction-list">{transactions.slice(0, 3).map((item) => <div className="transaction-row" key={item.id}><span>KSh {Number(item.amount).toLocaleString()}</span><b className={`decision-${item.status.toLowerCase()}`}>{item.status.replace('_', ' ')}</b></div>)}</div>
+          </section>
+
+          <section className="transaction-panel" aria-labelledby="provider-title" style={{ marginTop: 12 }}>
+            <div className="panel-heading"><div><p className="eyebrow">STAGE 5</p><h2 id="provider-title">Risk rules</h2></div></div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {riskRules.map((rule) => (
+                <div key={rule.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <span>{rule.label}</span>
+                  <b className={`decision-${rule.impact < 0 ? 'block' : 'allow'}`}>{rule.impact}</b>
+                </div>
+              ))}
+              <div style={{ marginTop: 8, borderTop: '1px solid #dfe7e0', paddingTop: 8, fontSize: 12 }}>
+                <strong>Decision bands:</strong> 80–100 ALLOW, 40–79 STEP_UP, 0–39 BLOCK
+              </div>
+            </div>
+          </section>
+
+          <section className="transaction-panel" aria-labelledby="provider-title" style={{ marginTop: 12 }}>
+            <div className="panel-heading"><div><p className="eyebrow">STAGE 4</p><h2 id="provider-title">Provider status</h2></div></div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {securitySummary ? Object.entries(securitySummary.providers).map(([key, value]) => (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <span>{value.label}</span>
+                  <b className={`decision-${value.status === 'ready' ? 'allow' : 'block'}`}>{value.status}</b>
+                </div>
+              )) : <p className="empty-copy">Loading provider status…</p>}
+              <div style={{ marginTop: 6, borderTop: '1px solid #dfe7e0', paddingTop: 8, fontSize: 12 }}>
+                <strong>Last event source:</strong> {securitySummary?.lastEventSource || 'unknown'}
+              </div>
+            </div>
+          </section>
+
+          <section className="transaction-panel" aria-labelledby="demo-action-title" style={{ marginTop: 12 }}>
+            <div className="panel-heading"><div><p className="eyebrow">STAGE 5</p><h2 id="demo-action-title">Demo controls</h2></div></div>
+            <button className="submit-button" onClick={resetDemo} disabled={!demoMode || Boolean(busy)}>{busy === 'reset' ? 'Resetting…' : 'Reset demo'}</button>
           </section>
         </aside>
       </section>

@@ -50,11 +50,13 @@ after(async () => {
 });
 
 test('events update persisted trust, broadcast live, and gate a large transfer', async () => {
+  const auth = Buffer.from(`${process.env.API_USERNAME || 'sentinel'}:${process.env.API_PASSWORD || 'sentinel-dev'}`).toString('base64');
   const health = await request(runtime.app).get('/health').expect(200);
   assert.equal(health.body.database, 'connected');
 
   const phoneEvent = await request(runtime.app)
     .post('/events')
+    .set('Authorization', `Basic ${auth}`)
     .send({
       type: 'TEST_EVENT',
       userId: testUserId,
@@ -70,6 +72,7 @@ test('events update persisted trust, broadcast live, and gate a large transfer',
   const broadcastPromise = new Promise((resolve) => socket.once('trustUpdated', resolve));
   const sim = await request(runtime.app)
     .post('/simulate')
+    .set('Authorization', `Basic ${auth}`)
     .send({ type: 'SIM_REPLACEMENT', userId: testUserId })
     .expect(201);
   assert.equal(sim.body.trustScore, 60);
@@ -81,6 +84,7 @@ test('events update persisted trust, broadcast live, and gate a large transfer',
 
   const changed = await request(runtime.app)
     .post('/simulate')
+    .set('Authorization', `Basic ${auth}`)
     .send({ type: 'DEVICE_CHANGED', userId: testUserId })
     .expect(201);
   assert.equal(changed.body.trustScore, 35);
@@ -88,16 +92,17 @@ test('events update persisted trust, broadcast live, and gate a large transfer',
 
   const transfer = await request(runtime.app)
     .post('/transactions')
-    .send({ userId: testUserId, amount: 24000, recipient: 'Demo recipient' })
+    .set('Authorization', `Basic ${auth}`)
+    .send({ userId: testUserId, amount: 24000, recipient: '0712345678' })
     .expect(201);
   assert.equal(transfer.body.action, 'BLOCK');
   assert.equal(transfer.body.transaction.status, 'BLOCKED');
 
-  const trust = await request(runtime.app).get(`/users/${testUserId}/trust`).expect(200);
+  const trust = await request(runtime.app).get(`/users/${testUserId}/trust`).set('Authorization', `Basic ${auth}`).expect(200);
   assert.equal(trust.body.trustScore, 20);
-  const events = await request(runtime.app).get(`/users/${testUserId}/events`).expect(200);
+  const events = await request(runtime.app).get(`/users/${testUserId}/events`).set('Authorization', `Basic ${auth}`).expect(200);
   assert.equal(events.body.length, 4);
   assert.equal(events.body.at(0).type, 'LARGE_TRANSACTION');
-  const transactions = await request(runtime.app).get(`/transactions?userId=${testUserId}`).expect(200);
+  const transactions = await request(runtime.app).get(`/transactions?userId=${testUserId}`).set('Authorization', `Basic ${auth}`).expect(200);
   assert.equal(transactions.body[0].status, 'BLOCKED');
 });
